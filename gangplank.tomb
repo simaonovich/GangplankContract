@@ -191,9 +191,9 @@ contract gangplank {
 	}
 	
 	// calculates the recommend price of a SKULL
-	public getPrice() : number {
-		
-	}
+	/*public getPrice() : number {
+		return ( ) / $SKULL_MAX_SUPPLY;
+	}*/
 	
 	public addWinner(from: address, winnerAddress: address) {
 		Runtime.expect(Runtime.isWitness(_owner), "witness failed");
@@ -220,6 +220,18 @@ contract gangplank {
 		}
 	}
 
+	// internal call
+	private exchangeBalance(from:address, symbol:string, amount:number, available_sum:number) 
+	{
+		if (available_sum > 0) 
+		{		
+			local obtained_sum:number = (available_sum * amount) / SKULL_MAX_SUPPLY;		
+			Runtime.expect(obtained_sum <= available_sum, "calculation error");		
+			Runtime.expect(obtained_sum > 0, "swap is too small, use more tokens");		
+			Token.transfer($THIS_ADDRESS, from, symbol, obtained_sum);		
+		}
+	}		
+
 	// lets someone swap SKULLs for a percent of the contract balances
 	public swapToken(from:address, amount:number)
 	{	
@@ -235,21 +247,9 @@ contract gangplank {
 		local available_sum: number = available_KCAL + available_SOUL;
 		Runtime.expect(available_sum > 0, "pot is empty");		
 		
-		this.exchangeBalance("SOUL", available_SOUL);
-		this.exchangeBalance("KCAL", available_KCAL);
+		this.exchangeBalance(from, "SOUL", amount, available_SOUL);
+		this.exchangeBalance(from, "KCAL", amount, available_KCAL);
 		
-		Token.burn(from, $SKULL_SYMBOL, amount);		
+		Token.burn(from, $SKULL_SYMBOL, amount);
 	}
-	
-	// internal call
-	private exchangeBalance(symbol:string, available_sum:number) 
-	{
-		if (available_sum > 0) 
-		{		
-			local obtained_sum:number = (available_sum * amount) / SKULL_MAX_SUPPLY;		
-			Runtime.expect(obtained_sum <= available_sum, "calculation error");		
-			Runtime.expect(obtained_sum > 0, "swap is too small, use more tokens");		
-			Token.transfer($THIS_ADDRESS, from, symbol, obtained_sum);		
-		}
-	}		
 }
