@@ -11,8 +11,11 @@ struct pirate_ram
 
 const SKULL_MAX_SUPPLY : number = 1000;
 
-token PIRATE {
+token GANG {
 	import NFT;
+	import Runtime;
+	import Map;
+	import Storage;
 
 	global _owner: address;
 	global _supply: number;
@@ -30,7 +33,8 @@ token PIRATE {
 	property isFungible: bool = false;
 
 	property maxSupply: number {
-		return _supply;
+		return Storage.read<number>($THIS_SYMBOL, "_supply");
+		//return _supply;
 	}
 
 	nft pirate<pirate_rom, pirate_ram> 
@@ -51,16 +55,6 @@ token PIRATE {
 		property infoURL: string {
 			return "https://gangplank.io/api/pirate/"+ _tokenID;
 		}
-	}
-
-	constructor (addr:address) 
-	{
-		_owner = addr;
-		_totalSeries = 0;
-		_supply = 0;
-		// at least one token series must exist, here we create 2 series
-		// they don't have to be created in the constructor though, can be created later
-		this.launchSeries(10, "Origin", 123); // TODO change this later
 	}
 	
 	// creates a new pirate series with a specific name and seed (used for visual)
@@ -109,6 +103,16 @@ token PIRATE {
 		NFT.mint(from, to, $THIS_SYMBOL, rom_data, ram_data, seriesID);
 	}
 
+	constructor (addr:address) 
+	{
+		_owner = addr;
+		_totalSeries = 0;
+		_supply = 0;
+		// at least one token series must exist, here we create 2 series
+		// they don't have to be created in the constructor though, can be created later
+		this.launchSeries(10, "Origin", 123); // TODO change this later
+	}
+
 	// allows the token to be upgraded later, remove this trigger if you want a imutable fungible token
 	trigger onUpgrade(from:address)
 	{
@@ -128,11 +132,11 @@ token SKULL { // this defines the token symbol as SKULL
 	import Runtime;
 
 	property name:string = "Pirate Skull";
+	property decimals:number = 8; // required only if isDivisible is true
 
 	property isFungible: bool = true;
 
 	property isDivisible: bool = true;
-	property decimals:number = 8; // required only if isDivisible is true
 
 	property isTransferable: bool = true;
 	property isBurnable: bool = true;
@@ -141,8 +145,6 @@ token SKULL { // this defines the token symbol as SKULL
 	property maxSupply: number = SKULL_MAX_SUPPLY;
 
 	global _admin: address;
-
-	global _playerScores:storage_map<address, number>;
 
 	constructor(owner:address)	{
 		_admin = owner;
@@ -163,12 +165,14 @@ contract gangplank {
 	import Hash;
 	import Runtime;
 	import Token;
-	import Decimals;
+	import Map;
+	import Decimal;
 	import Leaderboard;
 
 	const PIRATE_BOARD: string = "gangboard"; 	
 
 	global _owner: address;
+	global _playerScores:storage_map<address, number>;
 
 	constructor(owner:address)
 	{
@@ -211,7 +215,7 @@ contract gangplank {
 		local supply: number = Token.getCurrentSupply($SKULL_SYMBOL);
 		
 		if (supply < SKULL_MAX_SUPPLY) {
-			local amount:number = Decimals.conv
+			local amount:decimal<$SKULL_DECIMALS> = 1.0;
 			Token.mint(from, winnerAddress, $SKULL_SYMBOL, amount);
 		}
 	}
