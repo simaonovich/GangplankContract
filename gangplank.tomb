@@ -1,0 +1,251 @@
+struct pirate_rom
+{
+	name:string;
+	seed:number;
+}
+
+struct pirate_ram
+{
+	comment:string;
+}
+
+const SKULL_MAX_SUPPLY : number = 1000;
+
+token PIRATE {
+	import NFT;
+
+	global _owner: address;
+	global _supply: number;
+	global _totalSeries: number;
+
+	global _seriesNames:storage_map<number, string>;
+	global _seriesSeeds:storage_map<number, number>;
+	global _seriesCount:storage_map<number, number>;
+	global _seriesSupply:storage_map<number, number>;
+
+	property name: string = "Nachomen";
+
+	property isBurnable: bool = true;
+	property isFinite: bool = true;
+	property isFungible: bool = false;
+
+	property maxSupply: number {
+		return _supply;
+	}
+
+	nft pirate<pirate_rom, pirate_ram> 
+	{
+	
+		property name: string {
+			return _ROM.name;
+		}
+
+		property description: string {
+			return "Arrgg, pirate!";
+		}
+
+		property imageURL: string {
+			return "https://gangplank.io/img/pirate_"+ _seriesID + ".png";
+		}
+
+		property infoURL: string {
+			return "https://gangplank.io/api/pirate/"+ _tokenID;
+		}
+	}
+
+	constructor (addr:address) 
+	{
+		_owner = addr;
+		_totalSeries = 0;
+		_supply = 0;
+		// at least one token series must exist, here we create 2 series
+		// they don't have to be created in the constructor though, can be created later
+		this.launchSeries(10, "Origin", 123); // TODO change this later
+	}
+	
+	// creates a new pirate series with a specific name and seed (used for visual)
+	public launchSeries(seriesSupply:number, seriesName:string, seriesSeed: number) : number
+	{		
+		Runtime.expect(Runtime.isWitness(_owner), "witness failed");
+
+		Runtime.expect(seriesSupply > 0, "invalid supply");
+		Runtime.expect(seriesSupply <= 1000, "supply too large");
+		Runtime.expect(seriesSeed > 0, "invalid seed");
+		Runtime.expect(seriesName.length() > 0, "invalid name");
+
+		_totalSeries += 1;
+		local seriesID:number = _totalSeries;
+
+		NFT.createSeries(_owner, $THIS_SYMBOL, seriesID, seriesSupply, TokenSeries.Duplicated, pirate);
+
+		_supply += seriesSupply;
+
+		_seriesNames.set(seriesID, seriesName);
+		_seriesSeeds.set(seriesID, seriesSeed);
+		_seriesCount.set(seriesID, 0);
+		_seriesSupply.set(seriesID, seriesSupply);
+
+		return seriesID;
+	}
+	
+	
+	public mintPirate(from:address, to:address, seriesID:number, comment:string) 
+	{
+		Runtime.expect(seriesID > 0, "invalid seriesID");
+		Runtime.expect(seriesID <= _totalSeries, "seriesID not launched yet");
+
+		local seriesSupply:number = _seriesSupply.get(seriesID);
+		Runtime.expect(seriesSupply > 0, "something went wrong");
+		
+		local mintedAmount:number = _seriesCount.get(seriesID);
+		Runtime.expect(mintedAmount < seriesSupply, "series already fully minted");
+
+		local seriesName:string = _seriesNames.get(seriesID);
+		local seriesSeed:number = _seriesSeeds.get(seriesID);
+
+		local rom_data:pirate_rom = Struct.pirate_rom(seriesName, seriesSeed);
+		local ram_data:pirate_ram = Struct.pirate_ram(comment); // "Ahoy!"
+
+		NFT.mint(from, to, $THIS_SYMBOL, rom_data, ram_data, seriesID);
+	}
+
+	// allows the token to be upgraded later, remove this trigger if you want a imutable fungible token
+	trigger onUpgrade(from:address)
+	{
+		Runtime.expect(Runtime.isWitness(_owner), "witness failed");
+		return;
+	}
+
+	// makes sure only the owner can mint
+	trigger onMint(from:address, to:address, symbol:string, tokenID:number)
+    {
+        // check is witness and is current owner
+        Runtime.expect(Runtime.isWitness(_owner), "invalid witness");
+    }
+}
+
+token SKULL { // this defines the token symbol as SKULL
+	import Runtime;
+
+	property name:string = "Pirate Skull";
+
+	property isFungible: bool = true;
+
+	property isDivisible: bool = true;
+	property decimals:number = 8; // required only if isDivisible is true
+
+	property isTransferable: bool = true;
+	property isBurnable: bool = true;
+
+	property isFinite: bool = true;
+	property maxSupply: number = SKULL_MAX_SUPPLY;
+
+	global _admin: address;
+
+	global _playerScores:storage_map<address, number>;
+
+	constructor(owner:address)	{
+		_admin = owner;
+	}
+
+	// allows the token to be upgraded later, remove this trigger if you want a imutable fungible token
+	trigger onUpgrade(from:address)
+	{
+		Runtime.expect(Runtime.isWitness(_admin), "witness failed");
+		return;
+	}
+
+	// its possible to also add more triggers, custom methods etc
+}
+
+contract gangplank {
+	import Random;
+	import Hash;
+	import Runtime;
+	import Token;
+	import Decimals;
+	import Leaderboard;
+
+	const PIRATE_BOARD: string = "gangboard"; 	
+
+	global _owner: address;
+
+	constructor(owner:address)
+	{
+		_owner = owner;
+		Leaderboard.create(owner, PIRATE_BOARD, 10);
+	}
+	
+	trigger onUpgrade(from:address) 
+	{
+		Runtime.expect(Runtime.isWitness(_owner), "witness failed");
+		return;
+	}
+	
+	public getAdmin(): address {
+		return _owner;
+	}
+	
+	// calculates the recommend price of a SKULL
+	public getPrice() : number {
+		
+	}
+	
+	public addWinner(from: address, winnerAddress: address) {
+		Runtime.expect(Runtime.isWitness(_owner), "witness failed");
+		
+		local score:number;
+		
+		if (_playerScores.has(winnerAddress)) 
+		{
+			score = _playerScores.get(winnerAddress);
+		}
+		else 
+		{
+			score = 0;
+		}
+		
+		score += 1;	
+		Leaderboard.insert(from, winnerAddress, PIRATE_BOARD, score);
+		
+		local supply: number = Token.getCurrentSupply($SKULL_SYMBOL);
+		
+		if (supply < SKULL_MAX_SUPPLY) {
+			local amount:number = Decimals.conv
+			Token.mint(from, winnerAddress, $SKULL_SYMBOL, amount);
+		}
+	}
+
+	// lets someone swap SKULLs for a percent of the contract balances
+	public swapToken(from:address, amount:number)
+	{	
+		Runtime.expect(amount > 0, "invalid amount");
+		Runtime.expect(amount <= SKULL_MAX_SUPPLY, "invalid amount");
+		
+		local availableBalance:number = Token.getBalance(from, $SKULL_SYMBOL);
+		Runtime.expect(amount <= availableBalance, "not enough balance");
+		
+		local available_SOUL:number = Token.getBalance($THIS_ADDRESS, "SOUL");
+		local available_KCAL:number = Token.getBalance($THIS_ADDRESS, "KCAL");
+		
+		local available_sum: number = available_KCAL + available_SOUL;
+		Runtime.expect(available_sum > 0, "pot is empty");		
+		
+		this.exchangeBalance("SOUL", available_SOUL);
+		this.exchangeBalance("KCAL", available_KCAL);
+		
+		Token.burn(from, $SKULL_SYMBOL, amount);		
+	}
+	
+	// internal call
+	private exchangeBalance(symbol:string, available_sum:number) 
+	{
+		if (available_sum > 0) 
+		{		
+			local obtained_sum:number = (available_sum * amount) / SKULL_MAX_SUPPLY;		
+			Runtime.expect(obtained_sum <= available_sum, "calculation error");		
+			Runtime.expect(obtained_sum > 0, "swap is too small, use more tokens");		
+			Token.transfer($THIS_ADDRESS, from, symbol, obtained_sum);		
+		}
+	}		
+}
